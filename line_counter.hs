@@ -103,7 +103,7 @@ ioPutStrLn (x:xs) = do
     ioPutStrLn xs
 
 ioLinesToStr :: (IO(Int), String) -> IO(String)
-ioLinesoStr (x, ending) = do
+ioLinesToStr (x, ending) = do
     y <- x
     let op = show y
     return $ ending ++ "\t: " ++ op ++ "\tLines"
@@ -117,6 +117,8 @@ main = do
         let results = map (getRecLines path . (\x -> [x])) $ init endings
         let strings = map ioLinesToStr $ zip results $ init endings
         ioPutStrLn strings
+        total <- ioSum results 0
+        putStrLn $ "Total\t: " ++ (show total) ++ "\tLines"
     else do
         let results = map (getLinesWrapper path . (\x -> [x])) $ endings
         let strings = map ioLinesToStr $ zip results endings
