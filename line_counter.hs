@@ -17,8 +17,7 @@ ioSum [] acc = do
     return acc
 ioSum (x:xs) acc = do
     n <- x
-    let newAcc = acc + n
-    p <- ioSum xs newAcc
+    p <- ioSum xs (acc + n)
     return p
 
 getAllFileLines :: FilePath -> String -> IO(Int)
@@ -41,18 +40,22 @@ parseArgs xs = (path, endings)
         path = head xs
         endings = tail xs
 
+-- Used in getRecLines to recursivly get all directories and sub-directories
 getCurrentDirs:: FilePath -> IO([FilePath])
 getCurrentDirs path = do
     current_level <- getDirectoryContents path
-    let dirs = filter (\x -> not ("." `isInfixOf` x)) current_level
-    let combined_dirs = map (path `combinePaths`) dirs
-    filtered_dirs <- filterNonExistDir combined_dirs
-    if null filtered_dirs then return ([]) else do
-        let more_dirs = [getCurrentDirs dir | dir <- filtered_dirs]
+    -- Add rest of the paths to the directory names
+    let combined_paths = map (path `combinePaths`) current_level
+    -- Check if paths are actually dirs or if theyre files
+    filtered_paths <- removeFiles combined_paths
+    -- Recursivly get all subdirectories
+    if null filtered_paths then return ([]) else do
+        let more_dirs = [getCurrentDirs dir | dir <- filtered_paths]
         let x = concatIOPaths more_dirs
         z <- x
-        return $ filtered_dirs ++ z
+        return $ filtered_paths ++ z
 
+-- Used in concatIOPaths as the concat function in foldr
 f :: IO([FilePath]) -> IO([FilePath]) -> IO([FilePath])
 f p acc = do
     path <- p
@@ -67,15 +70,17 @@ concatIOPaths paths = do
     folded <- foldr f emptyFileList paths
     return folded
 
-filterNonExistDir :: [FilePath] -> IO([FilePath])
-filterNonExistDir (p:ps) = do
+-- Filters out everything that's not a directory
+removeFiles :: [FilePath] -> IO([FilePath])
+removeFiles (p:ps) = do
     x <- doesDirectoryExist p
-    if x then do
-        rest <- filterNonExistDir ps
+    if x && (last p /= '.') then do
+        rest <- removeFiles ps
         return $ p:rest
-    else filterNonExistDir ps
-filterNonExistDir _ = return []
+    else removeFiles ps
+removeFiles _ = return []
 
+-- Concats two filepaths, handles both with and without traling "/"
 combinePaths :: FilePath -> FilePath -> FilePath
 combinePaths path1 path2 = strippedPath1 ++ "/" ++ path2
     where strippedPath1 = if "/" `isSuffixOf` path1 then init path1 else path1
@@ -102,6 +107,7 @@ ioPutStrLn (x:xs) = do
     putStrLn $ output
     ioPutStrLn xs
 
+-- Formats amount of lines and file ending to print format
 ioLinesToStr :: (IO(Int), String) -> IO(String)
 ioLinesToStr (x, ending) = do
     y <- x
@@ -111,8 +117,9 @@ ioLinesToStr (x, ending) = do
 main = do
     args <- getArgs
     let splitArgs = parseArgs args
-    let path = fst splitArgs
-    let endings = snd splitArgs
+    let (path, endings) = splitArgs
+    --let path = fst splitArgs
+    --let endings = snd splitArgs
     if (last endings) == "-r" then do
         let results = map (getRecLines path . (\x -> [x])) $ init endings
         let strings = map ioLinesToStr $ zip results $ init endings
