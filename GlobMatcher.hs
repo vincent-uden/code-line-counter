@@ -3,8 +3,8 @@ module GlobMatcher (
         isMatch
         ) where
 
-getMatches :: String -> [String] -> [String]
-getMatches pattern xs = filter (isMatch pattern) xs
+getMatches :: [String] -> String -> [String]
+getMatches xs pattern = filter (isMatch pattern) xs
 
 isMatch :: String -> String -> Bool
 isMatch "*" yss = True
