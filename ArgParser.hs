@@ -64,7 +64,7 @@ helpMsg = "\
 \\n\
 \  -h, --help\tshow this message\n\
 \  -r\trecursively search for files\n\
-\  -i [DIRECTORIES]\tignore given driectories\n\
+\  -i [DIRECTORIES]\tignore given directories\n\
 \\n\
 \Examples:\n\n\
 \  countlines . .py .html -r \n\
