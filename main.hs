@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 import GlobMatcher        ( getMatches )
 
 import ArgParser          ( Flag(..)
@@ -31,11 +33,11 @@ getLines path = readFile path >>=
     \txt -> return $ txt `seq` length $ lines txt
 
 ioSum :: [IO Int] -> IO Int
-ioSum xs = foldM (\a x -> (a+) <$> x ) 0 xs
+ioSum = foldM (\a x -> (a+) <$> x ) 0
 
 getAllFilePaths :: [Flag] -> FilePath -> IO [FilePath]
 -- Recursive case
-getAllFilePaths flags@[Recursive, (Ignore ignores)] path = do
+getAllFilePaths flags@[Recursive, Ignore ignores] path = do
     currentLevel <- listDirectory path
     -- Canonize all paths and filter out ignore paths + . and ..
     let canonCurrentLevel = filter (`notElem` ignores) $ 
@@ -43,22 +45,20 @@ getAllFilePaths flags@[Recursive, (Ignore ignores)] path = do
     -- Get directories for further search (if recursive flag is set)
     -- TODO
     dirs <- filterM doesDirectoryExist canonCurrentLevel
-    files <- filterM ((fmap not) . doesDirectoryExist) canonCurrentLevel
-    rest <- sequence $ map (getAllFilePaths flags) dirs
+    files <- filterM (fmap not . doesDirectoryExist) canonCurrentLevel
+    rest <- mapM (getAllFilePaths flags) dirs
     return $ files ++ concat rest
 -- Non-Recursive case
-getAllFilePaths flags@[(Ignore ignores)] path = do
+getAllFilePaths flags@[Ignore ignores] path = do
     currentLevel <- listDirectory path
     -- Canonize all paths and filter out ignore paths + . and ..
     let canonCurrentLevel = filter (`notElem` ignores) $ 
-            map (path </>) $ currentLevel
+            map (path </>) currentLevel
     -- Filter to get files and skip directories
-    files <- filterM ((fmap not) . doesDirectoryExist) canonCurrentLevel
-    return files
+    filterM (fmap not . doesDirectoryExist) canonCurrentLevel
 
 canonIgnore :: Flag -> IO Flag
-canonIgnore (Ignore paths) = (sequence (map canonicalizePath paths)) >>= 
-    return . Ignore
+canonIgnore (Ignore paths) = Ignore <$> mapM canonicalizePath paths
 
 fileExtensionGT a b = compare aEnding bEnding
     where
@@ -77,36 +77,34 @@ formatLinecount (ext, count) = ext ++ "\t: " ++ show count
 formatTotal :: [(String, Int)] -> String
 formatTotal xs = "Total\t: " ++ show sum
     where
-        sum = foldl (\a x -> a + (snd x)) 0 xs
+        sum = foldl (\a x -> a + snd x) 0 xs
 
 main = do
     args <- getArgs
     let (baseDir, endings, flags) = parseArgs args
     if Help `elem` flags
-       then do
-       putStrLn helpMsg
-
+       then putStrLn helpMsg
        else do
        canonBaseDir <- canonicalizePath baseDir
        -- Set up for flags
        let recursive = Recursive `elem` flags
-       let ignoring = filter (\f -> case f of
-                                      Ignore _ -> True
-                                      _        -> False
-                                      ) flags
+       let ignoring = filter (\case
+                                  Ignore _ -> True
+                                  _        -> False
+                                  ) flags
        ignore <- case length ignoring of
                   0 -> return $ Ignore []
                   _ -> canonIgnore $ head ignoring
        -- Get all files in diredtory
-       paths <- case recursive of
-                    True -> getAllFilePaths [Recursive, ignore] canonBaseDir
-                    False -> getAllFilePaths [ignore] canonBaseDir
+       paths <- if recursive 
+                   then getAllFilePaths [Recursive, ignore] canonBaseDir
+                   else getAllFilePaths [ignore] canonBaseDir
        -- Filter out files with the wrong extensions
        let relevantFiles = sortBy fileExtensionGT $ 
             concatMap (getMatches paths . ("*" ++)) endings
        -- Sort then group files by extension
        let groupedByExt = groupBy ((==) `on` takeExtension) relevantFiles
-       lineSums <- sequence $ map getLinesAndExt groupedByExt
+       lineSums <- mapM getLinesAndExt groupedByExt
        -- Format and print output
        let output = map formatLinecount lineSums
        mapM_ putStrLn output
